@@ -1,0 +1,120 @@
+{% extends "layout.html" %}
+{% block title %}Upload — DataValidator{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Upload a file to validate</h1>
+  <p class="subtitle">CSV, XLSX, XML, and JSON files up to 100 MB</p>
+</div>
+
+<form method="post" action="{{ url_for('upload_file') }}" enctype="multipart/form-data" id="upload-form">
+
+  <div class="card">
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-zone-icon">📂</div>
+      <div class="drop-zone-title">Drop your file here</div>
+      <div class="drop-zone-sub">or click to browse</div>
+      <div class="file-types">
+        <span class="file-type-chip">CSV</span>
+        <span class="file-type-chip">XLSX</span>
+        <span class="file-type-chip">XLS</span>
+        <span class="file-type-chip">XML</span>
+        <span class="file-type-chip">JSON</span>
+      </div>
+      <input type="file" id="file" name="file" accept=".csv,.xlsx,.xls,.xml,.json" required/>
+    </div>
+
+    <div id="selected-file-display" style="display:none">
+      <div class="selected-file">
+        <span>📄</span>
+        <span class="file-name" id="file-name-label"></span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="clearFile()">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="csv-options" class="card" style="display:none">
+    <div class="card-title"><span class="icon">⚙</span> CSV Options</div>
+    <div class="form-group">
+      <label for="encoding">Encoding</label>
+      <select id="encoding" name="encoding">
+        <option value="">Auto-detect (tries UTF-8 → UTF-8 BOM → Latin-1)</option>
+        <option value="utf-8">UTF-8</option>
+        <option value="utf-8-sig">UTF-8 with BOM</option>
+        <option value="latin-1">Latin-1</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="xml-options" class="card" style="display:none">
+    <div class="card-title"><span class="icon">⚙</span> XML Options</div>
+    <div class="form-group">
+      <label for="record_path">Record path <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input type="text" id="record_path" name="record_path"
+             placeholder="e.g. root.items.item — leave blank to auto-detect"/>
+      <div class="form-hint">Dot-separated path to the repeating element that represents one row.</div>
+    </div>
+  </div>
+
+  <div class="btn-cluster">
+    <button type="submit" class="btn btn-primary btn-lg" id="submit-btn" disabled>
+      Upload &amp; Continue →
+    </button>
+  </div>
+
+</form>
+
+<script>
+(function () {
+  var dropZone  = document.getElementById('drop-zone');
+  var fileInput = document.getElementById('file');
+  var display   = document.getElementById('selected-file-display');
+  var nameLabel = document.getElementById('file-name-label');
+  var submitBtn = document.getElementById('submit-btn');
+
+  function onFile(file) {
+    if (!file) return;
+    var name = file.name.toLowerCase();
+    nameLabel.textContent = file.name;
+    display.style.display = '';
+    dropZone.style.display = 'none';
+    submitBtn.disabled = false;
+
+    document.getElementById('csv-options').style.display = name.endsWith('.csv') ? '' : 'none';
+    document.getElementById('xml-options').style.display = name.endsWith('.xml') ? '' : 'none';
+  }
+
+  window.clearFile = function () {
+    fileInput.value = '';
+    display.style.display = 'none';
+    dropZone.style.display = '';
+    submitBtn.disabled = true;
+    document.getElementById('csv-options').style.display = 'none';
+    document.getElementById('xml-options').style.display = 'none';
+  };
+
+  fileInput.addEventListener('change', function () { onFile(this.files[0]); });
+
+  dropZone.addEventListener('click', function () { fileInput.click(); });
+
+  dropZone.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', function () {
+    dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    var f = e.dataTransfer.files[0];
+    if (f) {
+      var dt = new DataTransfer();
+      dt.items.add(f);
+      fileInput.files = dt.files;
+      onFile(f);
+    }
+  });
+})();
+</script>
+{% endblock %}

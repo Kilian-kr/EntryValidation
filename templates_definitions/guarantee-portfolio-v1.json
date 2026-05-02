@@ -1,0 +1,39 @@
+{
+  "id": "guarantee-portfolio-v1",
+  "name": "Guarantee Portfolio v1",
+  "version": "1.0.0",
+  "description": "Validation template for guarantee portfolio extract",
+  "strict": false,
+  "null_values": ["", " ", "NA", "N/A", "null", "-", "--"],
+  "xml_record_path": "root.records.record",
+  "columns": [
+    {
+      "name": "ClientID",
+      "aliases": ["client_id", "Client Id", "CLIENTID"],
+      "type": "string",
+      "required": true,
+      "nullable": false,
+      "rules": {
+        "regex": "^[A-Z0-9-]{4,20}$",
+        "min_len": 4,
+        "max_len": 20
+      }
+    },
+    {
+      "name": "Amount",
+      "aliases": ["GuaranteeAmount", "amount_eur"],
+      "type": "number",
+      "required": true,
+      "nullable": false,
+      "rules": { "min": 0 }
+    },
+    {
+      "name": "StartDate",
+      "aliases": ["start_date", "DateStart"],
+      "type": "date",
+      "required": false,
+      "nullable": true,
+      "rules": { "formats": ["%Y-%m-%d", "%d.%m.%Y"] }
+    }
+  ]
+}

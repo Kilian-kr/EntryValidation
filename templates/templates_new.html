@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% block title %}{% if edit_mode %}Edit{% else %}New{% endif %} Template — DataValidator{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{% if edit_mode %}Edit Template{% else %}New Template{% endif %}</h1>
+  <a href="{{ url_for('template_list') }}" class="btn btn-secondary">← Back</a>
+</div>
+
+{% if prefill_columns %}
+<div class="card">
+  <h3>Quick-fill from uploaded file</h3>
+  <p>Click to insert a starter template based on the detected columns.</p>
+  <button class="btn btn-secondary" onclick="prefillTemplate()">Use detected columns</button>
+</div>
+{% endif %}
+
+<div class="card">
+  <p>
+    Paste or edit the template JSON below.
+    See the <a href="#schema-help">schema reference</a> for all supported fields.
+  </p>
+  <form method="post" action="{% if edit_mode %}{{ url_for('template_new_post') }}{% else %}{{ url_for('template_new_post') }}{% endif %}">
+    <div class="form-group">
+      <label for="template_json">Template JSON</label>
+      <textarea id="template_json" name="template_json" class="code-editor" rows="30" spellcheck="false">{{ raw_json or starter_json }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">
+      {% if edit_mode %}Save Changes{% else %}Save Template{% endif %}
+    </button>
+  </form>
+</div>
+
+<div class="card" id="schema-help">
+  <h3>Schema Reference</h3>
+  <table class="data-table">
+    <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>id</code></td><td>string*</td><td>Unique identifier (used as filename)</td></tr>
+      <tr><td><code>name</code></td><td>string*</td><td>Display name</td></tr>
+      <tr><td><code>version</code></td><td>string</td><td>e.g. "1.0.0"</td></tr>
+      <tr><td><code>strict</code></td><td>boolean</td><td>Extra columns are errors if true</td></tr>
+      <tr><td><code>null_values</code></td><td>array</td><td>Extra tokens treated as null</td></tr>
+      <tr><td><code>xml_record_path</code></td><td>string</td><td>Dot-path to XML record elements</td></tr>
+      <tr><td><code>columns[].name</code></td><td>string*</td><td>Column name</td></tr>
+      <tr><td><code>columns[].aliases</code></td><td>array</td><td>Alternative header names</td></tr>
+      <tr><td><code>columns[].type</code></td><td>string*</td><td>string | integer | number | boolean | date | datetime | enum</td></tr>
+      <tr><td><code>columns[].required</code></td><td>boolean</td><td>Error if column missing from file</td></tr>
+      <tr><td><code>columns[].nullable</code></td><td>boolean</td><td>Allow empty values</td></tr>
+      <tr><td><code>columns[].rules.regex</code></td><td>string</td><td>Full-match regex for strings</td></tr>
+      <tr><td><code>columns[].rules.min/max</code></td><td>number</td><td>Numeric range</td></tr>
+      <tr><td><code>columns[].rules.min_len/max_len</code></td><td>integer</td><td>String length range</td></tr>
+      <tr><td><code>columns[].rules.allowed</code></td><td>array</td><td>Allowed values for enum type</td></tr>
+      <tr><td><code>columns[].rules.formats</code></td><td>array</td><td>strptime formats for date/datetime</td></tr>
+      <tr><td><code>columns[].rules.unique</code></td><td>boolean</td><td>Values must be unique in column</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+var prefillColumns = {{ prefill_columns | tojson }};
+
+function prefillTemplate() {
+  var cols = prefillColumns.map(function(c) {
+    return {
+      name: c,
+      aliases: [],
+      type: "string",
+      required: false,
+      nullable: true,
+      rules: {}
+    };
+  });
+  var tmpl = {
+    id: "my-template-v1",
+    name: "My Template",
+    version: "1.0.0",
+    description: "",
+    strict: false,
+    null_values: ["", " ", "NA", "N/A", "null", "-", "--"],
+    columns: cols
+  };
+  document.getElementById('template_json').value = JSON.stringify(tmpl, null, 2);
+}
+
+// If no content yet, put a starter
+(function() {
+  var ta = document.getElementById('template_json');
+  if (!ta.value.trim()) {
+    var starter = {
+      id: "my-template-v1",
+      name: "My Template",
+      version: "1.0.0",
+      description: "",
+      strict: false,
+      null_values: ["", " ", "NA", "N/A", "null", "-", "--"],
+      columns: [
+        {name: "ID", aliases: [], type: "string", required: true, nullable: false, rules: {}},
+        {name: "Amount", aliases: [], type: "number", required: true, nullable: false, rules: {min: 0}}
+      ]
+    };
+    ta.value = JSON.stringify(starter, null, 2);
+  }
+})();
+</script>
+{% endblock %}

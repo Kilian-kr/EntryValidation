@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+{% block title %}Templates — DataValidator{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header-row">
+    <h1>Template Manager</h1>
+    <div class="btn-cluster">
+      <a href="{{ url_for('template_new') }}" class="btn btn-primary">+ New template</a>
+      <a href="{{ url_for('template_import') }}" class="btn btn-secondary">Import JSON</a>
+      <form method="post" action="{{ url_for('template_reload') }}" style="display:contents">
+        <button type="submit" class="btn btn-ghost btn-sm">↺ Reload from disk</button>
+      </form>
+    </div>
+  </div>
+  <p class="subtitle" style="margin-top:6px">
+    Templates are <code>.json</code> files in <code>templates_definitions/</code>.
+    Drop a file there and click Reload, or use the manager below.
+  </p>
+</div>
+
+{% if templates %}
+<div class="template-grid">
+  {% for tid, tmpl in templates.items() %}
+  <div class="template-card">
+    <div class="template-card-header">
+      <div>
+        <div class="template-card-name">{{ tmpl.name }}</div>
+        {% if tmpl.description %}
+        <div class="template-card-desc">{{ tmpl.description }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="template-card-meta">
+      <span class="meta-chip">{{ tmpl.columns|length }} columns</span>
+      {% if tmpl.get('version') %}
+        <span class="meta-chip">v{{ tmpl.version }}</span>
+      {% endif %}
+      {% if tmpl.get('strict') %}
+        <span class="meta-chip strict">Strict</span>
+      {% endif %}
+      <span class="meta-chip" style="font-family:monospace;font-size:11px">{{ tmpl.id }}</span>
+    </div>
+
+    <div class="template-card-actions">
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('template_edit', template_id=tid) }}">Edit</a>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('template_export', template_id=tid) }}">↓ Export</a>
+      <form method="post" action="{{ url_for('template_duplicate', template_id=tid) }}" style="display:contents">
+        <button class="btn btn-ghost btn-sm">Duplicate</button>
+      </form>
+      <form method="post" action="{{ url_for('template_delete', template_id=tid) }}" style="display:contents"
+            onsubmit="return confirm('Delete \'{{ tmpl.name }}\'?')">
+        <button class="btn btn-danger btn-sm" style="margin-left:auto">Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:36px;margin-bottom:12px">📋</div>
+  <div style="font-size:15px;font-weight:600;margin-bottom:6px">No templates yet</div>
+  <p style="color:var(--gray-400);font-size:13px;margin-bottom:20px">
+    Drop <code>.json</code> files into <code>templates_definitions/</code> and reload,
+    or create one from scratch.
+  </p>
+  <a href="{{ url_for('template_new') }}" class="btn btn-primary">Create a template</a>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% block title %}Select Sheet — DataValidator{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Select Sheet</h1>
+  <p>Your workbook has multiple sheets. Choose which one to validate.</p>
+</div>
+
+<form class="card" method="post" action="{{ url_for('select_sheet_post', dataset_id=dataset_id) }}">
+  <div class="form-group">
+    <label for="sheet">Sheet</label>
+    <select id="sheet" name="sheet">
+      {% for name in meta.sheet_names %}
+        <option value="{{ loop.index0 }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Continue</button>
+</form>
+{% endblock %}

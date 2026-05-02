@@ -1,0 +1,633 @@
+{% extends "layout.html" %}
+{% block title %}Configure Schema — DataValidator{% endblock %}
+{% block content %}
+
+<nav class="breadcrumb">
+  <a href="{{ url_for('upload_form') }}">Upload</a>
+  <span class="sep">›</span>
+  <span class="current">Configure Schema</span>
+  <span class="sep">›</span>
+  <span style="color:var(--gray-300)">Results</span>
+</nav>
+
+<div class="page-header">
+  <div>
+    <h1>Configure Schema</h1>
+    <p class="subtitle">
+      {{ meta.filename }} &mdash; {{ meta.rows }} rows &times; {{ meta.cols }} columns
+    </p>
+  </div>
+</div>
+
+{% if peek_rows and meta.file_type != 'xml' %}
+<div class="card header-picker-card">
+  <div class="card-title"><span class="icon">↕</span> Header Row</div>
+  <p class="help-text">Click the row that contains your column names.</p>
+  <div class="table-scroll">
+    <table class="data-table picker-table" id="header-picker-table">
+      <tbody>
+        {% for row in peek_rows %}
+        {% set zone = 'skip' if loop.index0 < current_header_row else ('header' if loop.index0 == current_header_row else 'data') %}
+        <tr class="picker-row picker-zone-{{ zone }}"
+            data-row-index="{{ loop.index0 }}">
+          <td class="picker-row-num">{{ loop.index }}</td>
+          <td class="picker-zone-label">
+            {% if zone == 'skip' %}
+              <span class="zone-chip zone-skip">skip</span>
+            {% elif zone == 'header' %}
+              <span class="zone-chip zone-header">▶ header</span>
+            {% else %}
+              <span class="zone-chip zone-data">data</span>
+            {% endif %}
+          </td>
+          {% for cell in row %}
+          <td class="{% if zone == 'header' %}picker-cell-header{% elif zone == 'skip' %}picker-cell-skip{% endif %}">{{ cell }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="help-text" style="margin-top:10px">
+    Rows above the header will be dropped. Rows below become your data.
+  </p>
+  <form id="header-picker-form" method="post"
+        action="{{ url_for('set_header', dataset_id=dataset_id) }}" style="display:none">
+    <input type="hidden" name="header_row" id="header-row-input" value="{{ current_header_row }}"/>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title"><span class="icon">👁</span> Preview <span style="font-weight:400;font-size:12px;color:var(--gray-400)">(first 10 rows with current header)</span></div>
+  <div class="table-scroll">
+    <table class="data-table preview-table">
+      <thead>
+        <tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in preview %}
+        <tr>{% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('schema_submit', dataset_id=dataset_id) }}">
+
+  <div class="card">
+    <div class="card-title"><span class="icon">⚙</span> Validation Mode</div>
+    <div class="mode-cards">
+      <label class="mode-card {% if not show_mapping %}active{% endif %}" id="card-manual">
+        <input type="radio" name="mode" value="manual"
+               {% if not show_mapping %}checked{% endif %}
+               onchange="toggleMode('manual')"/>
+        <div class="mode-card-title">✏️ Manual</div>
+        <div class="mode-card-desc">Choose a type for each column yourself</div>
+      </label>
+      <label class="mode-card {% if show_mapping %}active{% endif %}" id="card-template">
+        <input type="radio" name="mode" value="template"
+               {% if show_mapping %}checked{% endif %}
+               onchange="toggleMode('template')"/>
+        <div class="mode-card-title">📋 Use a Template</div>
+        <div class="mode-card-desc">Apply a saved schema with aliases &amp; rules</div>
+      </label>
+    </div>
+  </div>
+
+  <!-- Manual panel -->
+  <div class="card" id="manual-panel" {% if show_mapping %}style="display:none"{% endif %}>
+    <div class="type-table-header">
+      <div class="card-title" style="margin-bottom:0"><span class="icon">🔤</span> Column Types</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="search" id="col-filter-input" placeholder="Filter columns…"
+               oninput="filterSchemaColumns(this.value)"
+               style="padding:5px 10px;font-size:12px;border:1px solid var(--border);
+                      border-radius:6px;background:var(--surface);color:var(--text);width:180px"/>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleTypeRef()">
+          {% if not show_type_ref %}Show{% else %}Hide{% endif %} type reference
+        </button>
+      </div>
+    </div>
+
+    <div id="type-ref-panel" class="type-ref-panel" style="display:none">
+      <table class="type-ref-table">
+        <thead>
+          <tr><th>Type</th><th>Accepts</th><th>Rejects</th><th>Options</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="type-badge">string</span></td>
+            <td>Any characters — no format check</td>
+            <td>Nothing (always passes format check)</td>
+            <td><code>regex</code> — pattern the full value must match</td>
+          </tr>
+          <tr>
+            <td><span class="type-badge">integer</span></td>
+            <td><code>0</code> <code>-5</code> <code>1000</code></td>
+            <td>Decimals like <code>1.5</code>, any non-numeric text</td>
+            <td><code>min</code> <code>max</code></td>
+          </tr>
+          <tr>
+            <td><span class="type-badge">number</span></td>
+            <td><code>3.14</code> <code>-2</code> <code>1e6</code></td>
+            <td>Non-numeric text, <code>inf</code>, <code>nan</code></td>
+            <td><code>min</code> <code>max</code></td>
+          </tr>
+          <tr>
+            <td><span class="type-badge">boolean</span></td>
+            <td><code>true</code> <code>false</code> <code>yes</code> <code>no</code> <code>1</code> <code>0</code> (case-insensitive)</td>
+            <td>Anything else, e.g. <code>Y</code></td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><span class="type-badge">date</span></td>
+            <td>Strings matching the formats you specify</td>
+            <td>Wrong format; <strong>everything if no formats given</strong></td>
+            <td><code>formats</code> — comma-separated strptime strings, e.g. <code>%Y-%m-%d</code></td>
+          </tr>
+          <tr>
+            <td><span class="type-badge">datetime</span></td>
+            <td>Same as <em>date</em> but includes time</td>
+            <td>Same as date</td>
+            <td><code>formats</code> — e.g. <code>%Y-%m-%d %H:%M:%S</code></td>
+          </tr>
+          <tr>
+            <td><span class="type-badge">enum</span></td>
+            <td>Values in the allowed list (case-insensitive)</td>
+            <td>Anything not in the list</td>
+            <td><code>allowed</code> — comma-separated valid values</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="type-ref-note">
+        <strong>Null handling (all types):</strong>
+        blank cells and tokens <code>NA</code> <code>N/A</code> <code>null</code> <code>-</code> <code>--</code> are treated as empty.
+        If the column is <em>required</em> an error is raised; otherwise the cell is skipped.
+      </p>
+    </div>
+
+    <table class="col-config-table">
+      <colgroup>
+        <col class="ccol-name"/>
+        <col class="ccol-type"/>
+        <col class="ccol-empty"/>
+        <col class="ccol-formats"/>
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Column</th>
+          <th>Type</th>
+          <th>Empty values</th>
+          <th>Options</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in columns %}
+        {% set col_schema  = existing_schema.columns.get(col) if existing_schema else None %}
+        {% set _inferred   = (inferred_types or {}).get(col, {}) %}
+        {% set _raw_type   = col_schema.type if col_schema else _inferred.get('type', 'string') %}
+        {% set cur_type    = 'string' if _raw_type == 'text' else _raw_type %}
+        {% set cur_empty   = 'error' if (col_schema and col_schema.required) else 'allowed' %}
+        {% set _rules      = (col_schema.get('rules') or {}) if col_schema else {} %}
+        {% set cur_regex   = _rules.get('regex', '') %}
+        {% set cur_min     = _rules['min'] if 'min' in _rules else '' %}
+        {% set cur_max     = _rules['max'] if 'max' in _rules else '' %}
+        {% set cur_formats_list = _rules.get('formats') or (_inferred.get('formats') if not col_schema else []) or [] %}
+        {% set cur_formats      = cur_formats_list | join(', ') %}
+        {% set cur_allowed = (_rules.get('allowed') or (_inferred.get('allowed') if not col_schema else []) or []) | join(', ') %}
+        <tr>
+          <td class="ccol-name-cell" title="{{ col }}">{{ col }}</td>
+          <td>
+            <div style="position:relative;display:inline-block;width:100%">
+              <select name="type_{{ col }}" class="col-select" onchange="updateOptions(this)">
+                {% for t in ['string','integer','number','boolean','date','datetime','enum'] %}
+                  <option value="{{ t }}" {% if cur_type == t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+              {% if not col_schema and _inferred.get('type', 'string') != 'string' %}
+              <span class="inferred-badge" title="Type auto-detected from data">auto</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <select name="empty_{{ col }}" class="col-select col-select-empty">
+              <option value="allowed" {% if cur_empty == 'allowed' %}selected{% endif %}>Allowed</option>
+              <option value="error"   {% if cur_empty == 'error'   %}selected{% endif %}>Error if empty</option>
+            </select>
+          </td>
+          <td class="col-options-cell">
+            {# string: regex pattern #}
+            <div data-opt="string" class="opt-row" style="{{ '' if cur_type == 'string' else 'display:none' }}">
+              <span class="opt-label" title="Optional regular expression the full value must match">regex</span>
+              <input type="text" name="regex_{{ col }}" value="{{ cur_regex }}"
+                     class="formats-input" placeholder="e.g. ^[A-Z]{2}[0-9]+$"
+                     {% if cur_type != 'string' %}disabled{% endif %}/>
+            </div>
+            {# integer / number: min + max #}
+            <div data-opt="integer number" class="opt-row minmax-wrap"
+                 style="{{ '' if cur_type in ['integer','number'] else 'display:none' }}">
+              <span class="opt-label">min</span>
+              <input type="number" name="min_{{ col }}" value="{{ cur_min }}"
+                     class="formats-input minmax-input" placeholder="–∞"
+                     {% if cur_type not in ['integer','number'] %}disabled{% endif %}
+                     step="any"/>
+              <span class="opt-label">max</span>
+              <input type="number" name="max_{{ col }}" value="{{ cur_max }}"
+                     class="formats-input minmax-input" placeholder="+∞"
+                     {% if cur_type not in ['integer','number'] %}disabled{% endif %}
+                     step="any"/>
+            </div>
+            {# date / datetime: dropdown format picker #}
+            {% set date_presets = [
+              ('%Y-%m-%d',  '2024-01-15'),
+              ('%d/%m/%Y',  '15/01/2024'),
+              ('%m/%d/%Y',  '01/15/2024'),
+              ('%d.%m.%Y',  '15.01.2024'),
+              ('%d-%m-%Y',  '15-01-2024'),
+              ('%Y/%m/%d',  '2024/01/15'),
+            ] %}
+            {% set dt_presets = [
+              ('%Y-%m-%d %H:%M:%S',  '2024-01-15 10:30:00'),
+              ('%Y-%m-%dT%H:%M:%S',  '2024-01-15T10:30:00'),
+              ('%Y-%m-%d %H:%M',     '2024-01-15 10:30'),
+              ('%d/%m/%Y %H:%M:%S',  '15/01/2024 10:30:00'),
+              ('%d/%m/%Y %H:%M',     '15/01/2024 10:30'),
+              ('%d.%m.%Y %H:%M:%S',  '15.01.2024 10:30:00'),
+            ] %}
+            <div data-opt="date datetime" class="fmt-dropdown-wrap"
+                 style="{{ '' if cur_type in ['date','datetime'] else 'display:none' }}">
+
+              {# trigger — looks like an input, shows selected tags #}
+              <div class="fmt-trigger" tabindex="0" role="button" aria-expanded="false">
+                <div class="fmt-tags-row"></div>
+                <span class="fmt-chevron">▾</span>
+              </div>
+
+              {# dropdown panel #}
+              <div class="fmt-panel" style="display:none">
+                <div class="fmt-option-list" data-for="date"
+                     style="{{ '' if cur_type != 'datetime' else 'display:none' }}">
+                  {% for fmt, eg in date_presets %}
+                  <div class="fmt-option" data-fmt="{{ fmt }}">
+                    <span class="fmt-opt-check">✓</span>
+                    <span class="fmt-opt-eg">{{ eg }}</span>
+                    <span class="fmt-opt-code">{{ fmt }}</span>
+                  </div>
+                  {% endfor %}
+                </div>
+                <div class="fmt-option-list" data-for="datetime"
+                     style="{{ '' if cur_type == 'datetime' else 'display:none' }}">
+                  {% for fmt, eg in dt_presets %}
+                  <div class="fmt-option" data-fmt="{{ fmt }}">
+                    <span class="fmt-opt-check">✓</span>
+                    <span class="fmt-opt-eg">{{ eg }}</span>
+                    <span class="fmt-opt-code">{{ fmt }}</span>
+                  </div>
+                  {% endfor %}
+                </div>
+                <div class="fmt-panel-divider"></div>
+                <div class="fmt-custom-row">
+                  <input type="text" class="fmt-custom-input" placeholder="Custom format, e.g. %Y/%m/%d"/>
+                  <button type="button" class="fmt-add-btn">Add</button>
+                </div>
+              </div>
+
+              {# hidden input — submitted with the form #}
+              <input type="hidden" name="formats_{{ col }}" class="fmt-hidden"
+                     value="{{ cur_formats }}"
+                     {% if cur_type not in ['date','datetime'] %}disabled{% endif %}/>
+            </div>
+            {# enum: allowed values #}
+            <div data-opt="enum" class="opt-row" style="{{ '' if cur_type == 'enum' else 'display:none' }}">
+              <span class="opt-label" title="Comma-separated list of allowed values (case-insensitive)">values</span>
+              <input type="text" name="allowed_{{ col }}" value="{{ cur_allowed }}"
+                     class="formats-input" placeholder="e.g. RED, GREEN, BLUE"
+                     {% if cur_type != 'enum' %}disabled{% endif %}/>
+            </div>
+            {# boolean: nothing to configure #}
+            <div data-opt="boolean" style="{{ '' if cur_type == 'boolean' else 'display:none' }}">
+              <span class="opt-none">No options</span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Template panel -->
+  <div class="card" id="template-panel" {% if not show_mapping %}style="display:none"{% endif %}>
+    <div class="card-title"><span class="icon">📋</span> Select Template</div>
+    {% if templates %}
+      <div class="form-group">
+        <label for="template_id">Template</label>
+        <select id="template_id" name="template_id" onchange="this.form.submit()">
+          <option value="">— choose a template —</option>
+          {% for tid, tmpl in templates.items() %}
+            <option value="{{ tid }}"
+              {% if selected_template and selected_template.id == tid %}selected{% endif %}>
+              {{ tmpl.name }}{% if tmpl.get('version') %} · {{ tmpl.version }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% if selected_template and match_result %}
+        <div class="match-summary">
+          <div class="section-heading">Column matching — {{ selected_template.name }}</div>
+
+          <p class="match-ok">✓ {{ match_result.matched|length }} column(s) matched</p>
+
+          {% if match_result.missing %}
+          <p class="match-warn" style="margin-top:6px">
+            ⚠ Missing required:
+            <span class="match-pills">
+              {% for c in match_result.missing %}
+                <span class="badge badge-danger">{{ c }}</span>
+              {% endfor %}
+            </span>
+          </p>
+          {% endif %}
+
+          {% if match_result.extra %}
+          <p class="match-info" style="margin-top:6px">
+            ℹ Extra columns (will not be validated):
+            <span class="match-pills">
+              {% for c in match_result.extra %}
+                <span class="badge badge-secondary">{{ c }}</span>
+              {% endfor %}
+            </span>
+          </p>
+          {% endif %}
+
+          {% if match_result.unresolved %}
+          <div style="margin-top:14px">
+            <div class="section-heading">Resolve unmatched columns</div>
+            <p class="help-text">Map each template column that wasn't auto-matched, or skip it.</p>
+            <table class="type-table">
+              <thead><tr><th>Template column</th><th>File column</th></tr></thead>
+              <tbody>
+                {% for tc in match_result.unresolved %}
+                <tr>
+                  <td>{{ tc }}</td>
+                  <td>
+                    <select name="map_{{ tc }}">
+                      <option value="__skip__">— skip —</option>
+                      {% for fc in columns %}
+                        <option value="{{ fc }}">{{ fc }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% else %}
+      <p style="color:var(--gray-400)">
+        No templates loaded.
+        <a href="{{ url_for('template_list') }}">Create one →</a>
+      </p>
+    {% endif %}
+  </div>
+
+  {% if show_mapping %}
+    <input type="hidden" name="force_validate" value="1"/>
+  {% endif %}
+
+  <div class="btn-cluster" style="margin-top:6px">
+    <button type="submit" class="btn btn-primary btn-lg">Run Validation →</button>
+    <a href="{{ url_for('template_list') }}" class="btn btn-secondary">Manage Templates</a>
+  </div>
+
+</form>
+
+<script>
+function filterSchemaColumns(val) {
+  var rows = document.querySelectorAll('.col-config-table tbody tr');
+  var q = val.trim().toLowerCase();
+  rows.forEach(function (row) {
+    var cell = row.querySelector('.ccol-name-cell');
+    var match = !q || (cell && cell.textContent.trim().toLowerCase().indexOf(q) !== -1);
+    row.style.display = match ? '' : 'none';
+  });
+}
+
+// ── Format dropdown ──────────────────────────────────────────────────────────
+
+function fmtVals(wrap) {
+  var h = wrap.querySelector('.fmt-hidden');
+  return (h && h.value.trim())
+    ? h.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+    : [];
+}
+
+function fmtSetVals(wrap, vals) {
+  var h = wrap.querySelector('.fmt-hidden');
+  if (h) h.value = vals.join(', ');
+  fmtRender(wrap);
+  fmtSyncOpts(wrap);
+}
+
+function fmtEsc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtRender(wrap) {
+  var row  = wrap.querySelector('.fmt-tags-row');
+  var vals = fmtVals(wrap);
+  row.innerHTML = '';
+  if (!vals.length) {
+    row.innerHTML = '<span class="fmt-placeholder">Select formats…</span>';
+  } else {
+    vals.forEach(function(v) {
+      var tag = document.createElement('span');
+      tag.className = 'fmt-tag';
+      tag.innerHTML = fmtEsc(v) +
+        '<button type="button" class="fmt-tag-del" data-fmt="' + fmtEsc(v) + '">×</button>';
+      row.appendChild(tag);
+    });
+  }
+}
+
+function fmtSyncOpts(wrap) {
+  var vals = fmtVals(wrap);
+  wrap.querySelectorAll('.fmt-option').forEach(function(o) {
+    o.classList.toggle('fmt-option-on', vals.indexOf(o.getAttribute('data-fmt')) !== -1);
+  });
+}
+
+function fmtOpen(wrap) {
+  wrap.querySelector('.fmt-panel').style.display = '';
+  wrap.querySelector('.fmt-trigger').setAttribute('aria-expanded','true');
+  wrap.classList.add('fmt-open');
+}
+
+function fmtClose(wrap) {
+  wrap.querySelector('.fmt-panel').style.display = 'none';
+  wrap.querySelector('.fmt-trigger').setAttribute('aria-expanded','false');
+  wrap.classList.remove('fmt-open');
+}
+
+// Single delegated click handler for all dropdown interactions
+document.addEventListener('click', function(e) {
+  // Close open panels when clicking outside
+  if (!e.target.closest('.fmt-dropdown-wrap')) {
+    document.querySelectorAll('.fmt-dropdown-wrap.fmt-open').forEach(fmtClose);
+    return;
+  }
+
+  // Open/close trigger
+  var trigger = e.target.closest('.fmt-trigger');
+  if (trigger) {
+    var wrap = trigger.closest('.fmt-dropdown-wrap');
+    wrap.classList.contains('fmt-open') ? fmtClose(wrap) : fmtOpen(wrap);
+    return;
+  }
+
+  // Toggle an option
+  var opt = e.target.closest('.fmt-option');
+  if (opt) {
+    var wrap = opt.closest('.fmt-dropdown-wrap');
+    var fmt  = opt.getAttribute('data-fmt');
+    var vals = fmtVals(wrap);
+    var idx  = vals.indexOf(fmt);
+    if (idx === -1) vals.push(fmt); else vals.splice(idx, 1);
+    fmtSetVals(wrap, vals);
+    return;
+  }
+
+  // Remove a tag
+  var del = e.target.closest('.fmt-tag-del');
+  if (del) {
+    e.stopPropagation();
+    var wrap = del.closest('.fmt-dropdown-wrap');
+    var fmt  = del.getAttribute('data-fmt');
+    fmtSetVals(wrap, fmtVals(wrap).filter(function(v){ return v !== fmt; }));
+    return;
+  }
+
+  // Add custom format
+  var addBtn = e.target.closest('.fmt-add-btn');
+  if (addBtn) {
+    var wrap = addBtn.closest('.fmt-dropdown-wrap');
+    var inp  = wrap.querySelector('.fmt-custom-input');
+    var raw  = inp.value.trim();
+    if (!raw) return;
+    var parts = raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    var vals  = fmtVals(wrap);
+    parts.forEach(function(p){ if (vals.indexOf(p) === -1) vals.push(p); });
+    fmtSetVals(wrap, vals);
+    inp.value = '';
+    return;
+  }
+});
+
+// Enter key in custom input triggers Add
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  var inp = e.target.closest('.fmt-custom-input');
+  if (!inp) return;
+  e.preventDefault();
+  var wrap = inp.closest('.fmt-dropdown-wrap');
+  var raw  = inp.value.trim();
+  if (!raw) return;
+  var parts = raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  var vals  = fmtVals(wrap);
+  parts.forEach(function(p){ if (vals.indexOf(p) === -1) vals.push(p); });
+  fmtSetVals(wrap, vals);
+  inp.value = '';
+});
+
+function updateOptions(sel) {
+  var type = sel.value;
+  var row  = sel.closest('tr');
+  if (!row) return;
+
+  row.querySelectorAll('[data-opt]').forEach(function(div) {
+    var types  = div.getAttribute('data-opt').split(' ');
+    var active = types.indexOf(type) !== -1;
+    div.style.display = active ? '' : 'none';
+    div.querySelectorAll('input').forEach(function(inp) {
+      inp.disabled = !active;
+      if (!active) inp.value = '';
+    });
+  });
+
+  // For date/datetime: swap the visible option list, clear selections
+  if (type === 'date' || type === 'datetime') {
+    var wrap = row.querySelector('.fmt-dropdown-wrap');
+    if (wrap) {
+      wrap.querySelectorAll('.fmt-option-list').forEach(function(g) {
+        g.style.display = g.getAttribute('data-for') === type ? '' : 'none';
+      });
+      fmtSetVals(wrap, []);
+      fmtClose(wrap);
+    }
+  }
+}
+
+// Initialise all dropdowns on load
+document.querySelectorAll('.fmt-dropdown-wrap').forEach(function(wrap) {
+  fmtRender(wrap);
+  fmtSyncOpts(wrap);
+});
+
+function toggleTypeRef() {
+  var p = document.getElementById('type-ref-panel');
+  var open = p.style.display !== 'none';
+  p.style.display = open ? 'none' : '';
+  event.currentTarget.textContent = open ? 'Show type reference' : 'Hide type reference';
+}
+
+function toggleMode(val) {
+  document.getElementById('manual-panel').style.display   = val === 'manual'   ? '' : 'none';
+  document.getElementById('template-panel').style.display = val === 'template' ? '' : 'none';
+  document.getElementById('card-manual').classList.toggle('active',   val === 'manual');
+  document.getElementById('card-template').classList.toggle('active', val === 'template');
+}
+
+(function () {
+  var table = document.getElementById('header-picker-table');
+  if (!table) return;
+  var form  = document.getElementById('header-picker-form');
+  var input = document.getElementById('header-row-input');
+
+  function applyZones(headerIdx) {
+    table.querySelectorAll('.picker-row').forEach(function (r) {
+      var i = parseInt(r.dataset.rowIndex, 10);
+      var zone = i < headerIdx ? 'skip' : (i === headerIdx ? 'header' : 'data');
+      r.className = 'picker-row picker-zone-' + zone;
+
+      // update zone label chip
+      var chip = r.querySelector('.zone-chip');
+      if (chip) {
+        chip.className = 'zone-chip zone-' + zone;
+        chip.textContent = zone === 'header' ? '▶ header' : zone;
+      }
+
+      // update cell styles
+      r.querySelectorAll('td:not(.picker-row-num):not(.picker-zone-label)').forEach(function (td) {
+        td.className = zone === 'header' ? 'picker-cell-header'
+                     : zone === 'skip'   ? 'picker-cell-skip'
+                     : '';
+      });
+    });
+  }
+
+  table.addEventListener('click', function (e) {
+    var row = e.target.closest('.picker-row');
+    if (!row) return;
+    var idx = parseInt(row.dataset.rowIndex, 10);
+    applyZones(idx);
+    input.value = idx;
+    form.submit();
+  });
+})();
+</script>
+{% endblock %}

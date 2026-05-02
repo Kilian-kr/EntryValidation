@@ -1,0 +1,232 @@
+{% extends "layout.html" %}
+{% block title %}Results — DataValidator{% endblock %}
+{% block content %}
+
+<nav class="breadcrumb">
+  <a href="{{ url_for('upload_form') }}">Upload</a>
+  <span class="sep">›</span>
+  <a href="{{ url_for('schema_select', dataset_id=dataset_id) }}">Schema</a>
+  <span class="sep">›</span>
+  <span class="current">Results</span>
+</nav>
+
+<!-- File info + downloads -->
+<div class="results-info-bar">
+  <div>
+    <span class="file-title">{{ meta.filename }}</span>
+    <span class="schema-chip" style="margin-left:10px">{{ issues.schema_id }}</span>
+  </div>
+  <div class="downloads-row">
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('download_issues', dataset_id=dataset_id) }}">
+      ↓ issues.csv
+    </a>
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('download_wrong_rows', dataset_id=dataset_id) }}">
+      ↓ wrong_rows.csv
+    </a>
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('download_issues_xlsx', dataset_id=dataset_id) }}">
+      ↓ validation.xlsx
+    </a>
+    <form method="post" action="{{ url_for('revalidate', dataset_id=dataset_id) }}" style="display:contents">
+      <button class="btn btn-ghost btn-sm" title="Re-run validation with the current schema">↺ Re-run</button>
+    </form>
+  </div>
+</div>
+
+<!-- Save as template -->
+<div class="card" style="padding:14px 20px">
+  <form method="post" action="{{ url_for('save_as_template', dataset_id=dataset_id) }}"
+        style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600;color:var(--gray-300)">💾 Save schema as template</span>
+    <input type="text" name="template_name" placeholder="Template name…"
+           style="flex:1;min-width:180px;max-width:320px;padding:6px 10px;font-size:13px;
+                  border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" required/>
+    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+  </form>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card {% if issues.stats.invalid_cells > 0 %}stat-bad{% else %}stat-good{% endif %}">
+    <div class="stat-value">{{ issues.stats.invalid_cells }}</div>
+    <div class="stat-label">Invalid Cells</div>
+    {% if issues.stats.total_cells %}
+    <div class="stat-sub">
+      {{ "%.1f"|format(issues.stats.invalid_cells / issues.stats.total_cells * 100) }}%
+      of {{ issues.stats.total_cells }}
+    </div>
+    {% endif %}
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ issues.stats.invalid_rows }}</div>
+    <div class="stat-label">Invalid Rows</div>
+    <div class="stat-sub">of {{ issues.stats.rows }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ issues.stats.invalid_columns }}</div>
+    <div class="stat-label">Invalid Columns</div>
+    <div class="stat-sub">of {{ issues.stats.columns }}</div>
+  </div>
+  {% if issues.stats.worst_column %}
+  <div class="stat-card stat-warn">
+    <div class="stat-value stat-value-sm">{{ issues.stats.worst_column }}</div>
+    <div class="stat-label">Worst Column</div>
+  </div>
+  {% endif %}
+  {% if issues.stats.top_issue_codes %}
+  <div class="stat-card" style="grid-column: span 1">
+    <div class="stat-label" style="margin-bottom:8px">Top Issue Types</div>
+    <ul class="issue-code-list">
+      {% for code, count in issues.stats.top_issue_codes %}
+      <li><span class="badge badge-danger">{{ code }}</span> <strong>{{ count }}</strong></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+
+{% set numeric_cols = [] %}
+{% for col, summary in issues.column_summary.items() %}
+  {% if summary.numeric_stats is defined %}
+    {% set _ = numeric_cols.append((col, summary.numeric_stats)) %}
+  {% endif %}
+{% endfor %}
+{% if numeric_cols %}
+<div class="card">
+  <div class="card-title"><span class="icon">📊</span> Numeric Column Stats</div>
+  <div class="table-scroll">
+    <table class="data-table" style="font-size:13px">
+      <thead>
+        <tr>
+          <th>Column</th>
+          <th style="text-align:right">Count</th>
+          <th style="text-align:right">Min</th>
+          <th style="text-align:right">Max</th>
+          <th style="text-align:right">Mean</th>
+          <th style="text-align:right">Std Dev</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col, ns in numeric_cols %}
+        <tr>
+          <td><strong>{{ col }}</strong></td>
+          <td style="text-align:right">{{ ns.count }}</td>
+          <td style="text-align:right">{{ ns.min }}</td>
+          <td style="text-align:right">{{ ns.max }}</td>
+          <td style="text-align:right">{{ "%.4g"|format(ns.mean) }}</td>
+          <td style="text-align:right">{{ "%.4g"|format(ns.std) if ns.std is defined else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if issues.dataset_issues %}
+<div class="card card-warn">
+  <div class="card-title"><span class="icon">⚠</span> Dataset Issues</div>
+  <ul class="dataset-issues-list">
+    {% for di in issues.dataset_issues %}
+    <li>
+      <span class="badge badge-danger">{{ di.code }}</span>
+      <span>{% if di.column %}<strong>{{ di.column }}</strong>: {% endif %}{{ di.message }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Sticky filter toolbar -->
+<div class="results-toolbar">
+  <div class="toolbar-group">
+    <span class="toolbar-label">Rows</span>
+    <div class="btn-group">
+      <a class="btn btn-secondary btn-sm {% if mode=='all' %}btn-active{% endif %}"
+         href="{{ url_for('results', dataset_id=dataset_id, mode='all', cols=cols_filter, error_code=error_code_filter) }}">All</a>
+      <a class="btn btn-secondary btn-sm {% if mode=='wrong_rows' %}btn-active{% endif %}"
+         href="{{ url_for('results', dataset_id=dataset_id, mode='wrong_rows', cols=cols_filter, error_code=error_code_filter) }}">Invalid only</a>
+      <a class="btn btn-secondary btn-sm {% if mode=='correct_rows' %}btn-active{% endif %}"
+         href="{{ url_for('results', dataset_id=dataset_id, mode='correct_rows', cols=cols_filter, error_code=error_code_filter) }}">Valid only</a>
+    </div>
+  </div>
+
+  <div class="toolbar-sep"></div>
+
+  <div class="toolbar-group">
+    <span class="toolbar-label">Columns</span>
+    <div class="btn-group">
+      <a class="btn btn-secondary btn-sm {% if cols_filter=='all' %}btn-active{% endif %}"
+         href="{{ url_for('results', dataset_id=dataset_id, mode=mode, cols='all', error_code=error_code_filter) }}">All</a>
+      <a class="btn btn-secondary btn-sm {% if cols_filter=='wrong_only' %}btn-active{% endif %}"
+         href="{{ url_for('results', dataset_id=dataset_id, mode=mode, cols='wrong_only', error_code=error_code_filter) }}">Invalid only</a>
+    </div>
+  </div>
+
+  {% if all_codes %}
+  <div class="toolbar-sep"></div>
+  <div class="toolbar-group">
+    <span class="toolbar-label">Error</span>
+    <form method="get" action="{{ url_for('results', dataset_id=dataset_id) }}" style="display:contents">
+      <select name="error_code" onchange="this.form.submit()"
+              style="width:auto;padding:4px 8px;font-size:12px">
+        <option value="">All codes</option>
+        {% for code in all_codes %}
+        <option value="{{ code }}" {% if error_code_filter == code %}selected{% endif %}>{{ code }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="mode" value="{{ mode }}"/>
+      <input type="hidden" name="cols" value="{{ cols_filter }}"/>
+    </form>
+  </div>
+  {% endif %}
+
+  <div class="toolbar-right">
+    <span id="row-count-label" style="font-size:12px;color:var(--gray-400)">Loading…</span>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card" style="padding:0;overflow:clip">
+  <div class="results-table-scroll" id="table-scroll">
+    <table class="data-table results-table" id="results-table">
+      <thead>
+        <tr>
+          <th class="row-num">#</th>
+          {% for col in display_cols %}
+          <th class="{% if invalid_count_by_col.get(col, 0) > 0 %}col-invalid{% endif %}">
+            {{ col }}
+            {% if invalid_count_by_col.get(col, 0) > 0 %}
+            <span class="col-badge">{{ invalid_count_by_col[col] }}</span>
+            {% endif %}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody id="results-tbody"></tbody>
+    </table>
+    <div id="scroll-sentinel" class="scroll-sentinel"></div>
+  </div>
+
+  <div id="empty-state" class="empty-state" style="display:none">
+    <div style="font-size:32px">🎉</div>
+    <p>No rows match this filter.</p>
+  </div>
+</div>
+
+<div id="fixed-scrollbar" class="fixed-scrollbar">
+  <div id="fixed-scrollbar-inner"></div>
+</div>
+
+<script>
+window.__resultsConfig = {
+  rowsUrl: {{ url_for('results_rows', dataset_id=dataset_id) | tojson }},
+  params: {
+    mode: {{ mode | tojson }},
+    cols: {{ cols_filter | tojson }},
+    error_code: {{ error_code_filter | tojson }},
+  },
+  total: {{ total_display_rows }},
+};
+</script>
+<script src="{{ url_for('static', filename='results.js') }}"></script>
+{% endblock %}
