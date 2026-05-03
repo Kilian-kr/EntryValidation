@@ -8,21 +8,78 @@ This document is the technical reference for developers working on or extending 
 
 ## Table of Contents
 
-1. [Architecture overview](#1-architecture-overview)
-2. [Request lifecycle](#2-request-lifecycle)
-3. [Module reference](#3-module-reference)
-4. [Data structures](#4-data-structures)
-5. [Validation engine](#5-validation-engine)
-6. [Type inference](#6-type-inference)
-7. [Template system](#7-template-system)
-8. [Front-end architecture](#8-front-end-architecture)
-9. [Extension points](#9-extension-points)
-10. [Error handling patterns](#10-error-handling-patterns)
-11. [Known limitations and technical debt](#11-known-limitations-and-technical-debt)
+1. [UI walkthrough (screenshots)](#1-ui-walkthrough-screenshots)
+2. [Architecture overview](#2-architecture-overview)
+3. [Request lifecycle](#3-request-lifecycle)
+4. [Module reference](#4-module-reference)
+5. [Data structures](#5-data-structures)
+6. [Validation engine](#6-validation-engine)
+7. [Type inference](#7-type-inference)
+8. [Template system](#8-template-system)
+9. [Front-end architecture](#9-front-end-architecture)
+10. [Extension points](#10-extension-points)
+11. [Error handling patterns](#11-error-handling-patterns)
+12. [Known limitations and technical debt](#12-known-limitations-and-technical-debt)
 
 ---
 
-## 1. Architecture overview
+## 1. UI walkthrough (screenshots)
+
+All screenshots were captured from a running instance at `http://localhost:5000` against a 10-row sample CSV containing intentional validation errors.
+
+### 1.1 Upload page
+
+The entry point. Accepts drag-and-drop or file-browser selection for CSV, XLSX, XLS, XML, and JSON files up to 100 MB.
+
+<img src="docs/screenshots/01_upload.png" width="600" alt="Upload page">
+
+---
+
+### 1.2 Schema configuration page
+
+After upload, the app infers column types from the data and pre-populates the type dropdowns. The user can:
+
+- Switch between **Manual** mode (configure each column independently) and **Template** mode (apply a saved schema).
+- Set the column type and empty-value policy per column.
+- Configure type-specific options (date formats, enum allowed values, regex patterns, numeric min/max).
+- Use the **header-row picker** at the top to re-ingest the file with a different header row.
+
+<img src="docs/screenshots/02_schema.png" width="800" alt="Schema configuration page">
+
+---
+
+### 1.3 Results page
+
+After validation, the results page shows:
+
+- **Summary cards** — invalid cell count, invalid row count, invalid column count, worst column, and a breakdown of issue codes.
+- **Numeric column stats** — count, min, max, mean, and standard deviation for numeric columns that parsed successfully.
+- **Filterable data table** — toggle between all rows / invalid rows / valid rows; filter by column; filter by error code. Invalid cells are highlighted in red with a tooltip showing the error message.
+- **Download buttons** — `issues.csv`, `wrong_rows.csv`, and an annotated `validation.xlsx` workbook.
+
+<img src="docs/screenshots/03_results.png" width="800" alt="Results page — stats, numeric summary, and data table">
+
+---
+
+### 1.4 Template manager
+
+Lists all saved templates. Each card shows the template name, column count, version badge, and ID slug. Actions: Edit (JSON editor), Export (download JSON), Duplicate, Delete.
+
+New templates can be created via **+ New template** or imported from a JSON file via **Import JSON**.
+
+<img src="docs/screenshots/05_templates.png" width="700" alt="Template manager">
+
+---
+
+### 1.5 Template editor
+
+A JSON editor with a built-in schema reference table. The editor validates the JSON against the meta-schema on save and reports field-level errors inline. The schema reference at the bottom lists every supported field with its type and description.
+
+<img src="docs/screenshots/06_template_new.png" width="700" alt="Template editor">
+
+---
+
+## 2. Architecture overview
 
 DataValidator is a single-process Flask application with no database. All persistent state is stored as flat files on the local filesystem. There are no background workers — every operation is synchronous and triggered by an HTTP request.
 
@@ -48,9 +105,9 @@ The application is entirely **stateless between requests** — every route loads
 
 ---
 
-## 2. Request lifecycle
+## 3. Request lifecycle
 
-### 2.1 Upload
+### 3.1 Upload
 
 ```
 POST /upload
@@ -72,7 +129,7 @@ POST /upload
             └─ redirect → GET /schema/<id>
 ```
 
-### 2.2 Schema configuration
+### 3.2 Schema configuration
 
 ```
 GET /schema/<id>
@@ -97,7 +154,7 @@ POST /schema/<id>  (mode=template)
   └─ redirect → POST /validate/<id>
 ```
 
-### 2.3 Validation
+### 3.3 Validation
 
 ```
 POST /validate/<id>
@@ -111,7 +168,7 @@ POST /validate/<id>
   └─ redirect → GET /results/<id>
 ```
 
-### 2.4 Results display
+### 3.4 Results display
 
 ```
 GET /results/<id>
@@ -128,7 +185,7 @@ GET /results/<id>/rows?offset=0&limit=100&mode=all&cols=all&error_code=
 
 ---
 
-## 3. Module reference
+## 4. Module reference
 
 ### `app.py`
 
@@ -401,9 +458,9 @@ Use `make_null_set()` instead of calling `is_null_value()` in a per-cell loop �
 
 ---
 
-## 4. Data structures
+## 5. Data structures
 
-### 4.1 `meta.json`
+### 5.1 `meta.json`
 
 ```json
 {
@@ -425,7 +482,7 @@ Additional keys for XML: `record_path`.
 
 ---
 
-### 4.2 `schema.json`
+### 5.2 `schema.json`
 
 ```json
 {
@@ -479,7 +536,7 @@ All available rule keys:
 
 ---
 
-### 4.3 `issues.json`
+### 5.3 `issues.json`
 
 ```json
 {
@@ -535,7 +592,7 @@ All available rule keys:
 
 ---
 
-### 4.4 Template JSON (stored in `templates_definitions/`)
+### 5.4 Template JSON (stored in `templates_definitions/`)
 
 ```json
 {
@@ -579,9 +636,9 @@ The full JSON Schema that validates this format is in `core/template_schema.json
 
 ---
 
-## 5. Validation engine
+## 6. Validation engine
 
-### 5.1 Cell validation flow
+### 6.1 Cell validation flow
 
 `validate_cell(value_str, col_def, null_tokens)` runs in three sequential stages:
 
@@ -615,7 +672,7 @@ value_str
    all types:        not_in blocklist
 ```
 
-### 5.2 Dataset validation passes
+### 6.2 Dataset validation passes
 
 `run_validation(df, schema)` runs four passes over the data:
 
@@ -633,7 +690,7 @@ Currently only `unique_together`. Iterates all rows and checks composite key uni
 **Pass 4 — Recount**
 Recomputes `invalid_count` in `column_summary` from the final `cell_issues` list. This ensures that issues added in Pass 3 are reflected in the counts.
 
-### 5.3 Null handling
+### 6.3 Null handling
 
 Null detection works as follows:
 
@@ -647,7 +704,7 @@ Schemas cannot currently *remove* tokens from the global list — they can only 
 
 ---
 
-## 6. Type inference
+## 7. Type inference
 
 `infer_column(series)` samples up to 500 non-null values and applies a 95% match-rate threshold. The detection order is fixed and significant:
 
@@ -671,15 +728,15 @@ Inference is **advisory only** — the user always sees the inferred type pre-se
 
 ---
 
-## 7. Template system
+## 8. Template system
 
-### 7.1 Storage
+### 8.1 Storage
 
 Templates are individual JSON files in `templates_definitions/`. The filename is derived from the template's `id` field via `_safe_filename()`, which strips path separators and non-safe characters to prevent directory traversal.
 
 The in-memory cache is a module-level `dict` in `templates_repo.py`. It is populated on first access and can be force-reloaded via `POST /templates/reload` or programmatically via `reload_templates()`.
 
-### 7.2 Matching
+### 8.2 Matching
 
 When a user selects a template, `match_template_to_columns()` tries to match each template column to a file column by:
 1. Comparing the normalised (lowercased + stripped) column `name`.
@@ -692,17 +749,17 @@ Unmatched columns fall into one of three categories:
 - **Unresolved** — the template column was optional — it can be mapped or skipped.
 - **Extra** — file columns not in the template — always included as `unvalidated` entries.
 
-### 7.3 Strict mode
+### 8.3 Strict mode
 
 When `"strict": true` in the template, any file column not mapped to a template column generates an `EXTRA_COLUMN` dataset issue. This is useful for enforcing that no unexpected columns appear in the data.
 
 ---
 
-## 8. Front-end architecture
+## 9. Front-end architecture
 
 The front-end is plain HTML + CSS + vanilla JavaScript. No build step, no bundler, no framework.
 
-### 8.1 Results table (infinite scroll)
+### 9.1 Results table (infinite scroll)
 
 The results page renders only the page shell on the server. The table body is empty on initial load. `static/results.js` takes over:
 
@@ -732,7 +789,7 @@ Each row JSON object looks like:
 
 `i` = invalid flag, `c` = error code, `m` = error message.
 
-### 8.2 Schema page date picker
+### 9.2 Schema page date picker
 
 The date/datetime format selector is a custom multi-select dropdown built in vanilla JS (inside `schema.html`). Key functions:
 
@@ -747,7 +804,7 @@ The date/datetime format selector is a custom multi-select dropdown built in van
 
 The hidden `<input name="formats_<col>">` is the actual form field submitted. The visible picker is purely cosmetic.
 
-### 8.3 Templates
+### 9.3 Templates
 
 All Jinja2 templates extend `layout.html`. Key template files:
 
@@ -764,9 +821,9 @@ All Jinja2 templates extend `layout.html`. Key template files:
 
 ---
 
-## 9. Extension points
+## 10. Extension points
 
-### 9.1 Adding a new validation rule
+### 10.1 Adding a new validation rule
 
 1. **Add to the JSON schema** — open `core/template_schema.json` and add the new key under `properties.columns.items.properties.rules`.
 2. **Implement the check** — add the logic to `_apply_rules()` in `core/validation.py`. Return `[(ISSUE_CODE, message)]` on failure or `[]` on pass.
@@ -774,7 +831,7 @@ All Jinja2 templates extend `layout.html`. Key template files:
 4. **Expose in the UI** — add a form field to the relevant type's `data-opt` div in `templates/schema.html`.
 5. **Inject from the form** — add an `elif col_type == "..."` branch in the `schema_submit` handler in `app.py` to read the field and write it into `schema["columns"][col]["rules"]`.
 
-### 9.2 Adding a new file type
+### 10.2 Adding a new file type
 
 1. **Register the extension** — add it to `ALLOWED_EXTENSIONS` in `config.py`.
 2. **Write an ingestion function** in `core/ingestion.py`:
@@ -789,7 +846,7 @@ All Jinja2 templates extend `layout.html`. Key template files:
 3. **Add a route branch** — add `elif ext == "mytype":` in `upload_file` in `app.py`.
 4. **Handle peek rows** — if the format supports a header-row picker, add a branch to `peek_rows()` in `ingestion.py`.
 
-### 9.3 Adding a new column type
+### 10.3 Adding a new column type
 
 1. **Add to the enum** in `core/template_schema.json` under `properties.columns.items.properties.type.enum`.
 2. **Add a parser** in `core/validation.py` (follow the `_parse_*` pattern).
@@ -801,7 +858,7 @@ All Jinja2 templates extend `layout.html`. Key template files:
 
 ---
 
-## 10. Error handling patterns
+## 11. Error handling patterns
 
 ### Flask routes
 Every route that loads dataset files wraps `storage.load_*()` calls in a `try/except FileNotFoundError` and calls `abort(404)`. Any other exception during ingestion or validation is caught, logged with `logger.exception()`, and surfaced to the user via `flash()`.
@@ -820,7 +877,7 @@ Templates that fail JSON Schema validation are logged at WARNING and skipped. A 
 
 ---
 
-## 11. Known limitations and technical debt
+## 12. Known limitations and technical debt
 
 | Area | Issue |
 |------|-------|

@@ -6,6 +6,48 @@ Upload a file, configure column types and rules, run validation, and download an
 
 ---
 
+## Screenshots
+
+### Upload
+
+Drop or browse for a CSV, XLSX, XLS, XML, or JSON file (up to 100 MB) to begin.
+
+<img src="docs/screenshots/01_upload.png" width="600" alt="Upload page">
+
+---
+
+### Schema configuration
+
+Column types are inferred automatically and pre-selected. Switch between Manual mode (per-column type, empty-value policy, and rules) and Template mode (apply a saved schema). Use the header-row picker to re-ingest the file with a different header row.
+
+<img src="docs/screenshots/02_schema.png" width="800" alt="Schema configuration page">
+
+---
+
+### Results
+
+Summary cards show invalid cell / row / column counts and the top error codes. The filterable table highlights invalid cells in red — hover a cell for the error message. Download results as `issues.csv`, `wrong_rows.csv`, or an annotated `validation.xlsx`.
+
+<img src="docs/screenshots/03_results.png" width="800" alt="Results page">
+
+---
+
+### Template manager
+
+Create, edit, export, duplicate, and delete reusable validation schemas. Templates are plain JSON files stored in `templates_definitions/` and can be imported/exported for sharing.
+
+<img src="docs/screenshots/05_templates.png" width="700" alt="Template manager">
+
+---
+
+### Template editor
+
+A JSON editor with a built-in schema reference. The template is validated against the meta-schema on save and field-level errors are shown inline.
+
+<img src="docs/screenshots/06_template_new.png" width="700" alt="Template editor">
+
+---
+
 ## ⚠️ Security Notice
 
 **This software is not production-ready and must not be deployed on a public-facing server without significant hardening.**
