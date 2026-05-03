@@ -137,7 +137,7 @@ All settings are read from environment variables with sensible development defau
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | `dev-secret-key-change-in-prod` | Flask session secret — **change in production** |
+| `SECRET_KEY` | `dev-secret-key-change-in-prod` | Flask session secret  |
 | `MAX_UPLOAD_BYTES` | `104857600` (100 MB) | Maximum upload file size |
 
 ---
